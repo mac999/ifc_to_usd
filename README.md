@@ -1,6 +1,7 @@
 # IFC to USD DiY
 
-Open your vibe coding tool, command "develop it under PRD.md". Do it yourself!
+- Open your vibe coding tool like Codex, Claude code etc
+- command "develop it under PRD.md". Do it yourself!
 
 # Summary
 In reference, this Python CLI tool that converts IFC (Industry Foundation Classes) models into
