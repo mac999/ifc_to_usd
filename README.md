@@ -1,4 +1,4 @@
-# ifc2usd
+# ifc to usd
 
 A Python CLI tool that converts IFC (Industry Foundation Classes) models into
 USD (Universal Scene Description) scenes.
