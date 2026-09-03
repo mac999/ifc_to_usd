@@ -1,4 +1,4 @@
-# IFC to USD PRD
+# IFC to USD DiY
 
 Open your vibe coding tool, command "develop it under PRD.md".
 
