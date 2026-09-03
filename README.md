@@ -1,6 +1,9 @@
-# ifc to usd
+# IFC to USD PRD
 
-A Python CLI tool that converts IFC (Industry Foundation Classes) models into
+Open your vibe coding tool, command "develop it under PRD.md".
+
+# Summary
+In reference, this Python CLI tool that converts IFC (Industry Foundation Classes) models into
 USD (Universal Scene Description) scenes.
 
 It does more than convert: it **measures what was preserved and what was lost, and
