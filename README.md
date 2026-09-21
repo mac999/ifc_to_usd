@@ -9,7 +9,7 @@ USD (Universal Scene Description) scenes.
 
 | IFC input | USD output |
 |---|---|
-| ![Bridge models in IFC](doc/bridge_ifc.png) | ![Converted USD scene](doc/bridge_usd.png) |
+| <img src="doc/bridge_ifc.png" alt="Bridge models in IFC" height="260"> | <img src="doc/bridge_usd.png" alt="Converted USD scene" height="260"> |
 
 Bridge models read from IFC (left) and the resulting USD scene opened in a USD
 viewer (right).
