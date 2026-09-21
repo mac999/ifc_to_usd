@@ -7,6 +7,13 @@
 In reference, this Python CLI tool that converts IFC (Industry Foundation Classes) models into
 USD (Universal Scene Description) scenes.
 
+| IFC input | USD output |
+|---|---|
+| ![Bridge models in IFC](doc/bridge_ifc.png) | ![Converted USD scene](doc/bridge_usd.png) |
+
+Bridge models read from IFC (left) and the resulting USD scene opened in a USD
+viewer (right).
+
 It does more than convert: it **measures what was preserved and what was lost, and
 writes it to a report**. Coordinate precision, property retention, class coverage
 and round-trip validation error are recorded on every run.
