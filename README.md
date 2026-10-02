@@ -1,7 +1,16 @@
-# IFC to USD DiY
+# IFC to USD
 
-- Open your vibe coding tool like Codex, Claude code etc
-- command "develop it under PRD.md". Do it yourself!
+Python IFC-to-USD conversion with measured precision, property-loss reports, batch execution, and an optional local 3D workspace. The workspace UI is English only.
+
+For this checkout, reuse the existing development environment:
+
+```powershell
+conda activate venv_lmm
+python -m pip install --no-cache-dir -e ".[web,test]"
+python -m ifc2usd web input -o out
+```
+
+See [the usage guide](docs/USAGE.md) for setup, viewer controls, testing, and current limitations. Built frontend assets ship with the package; Node is only needed to modify the frontend.
 
 # Summary
 In reference, this Python CLI tool that converts IFC (Industry Foundation Classes) models into
@@ -13,6 +22,13 @@ USD (Universal Scene Description) scenes.
 
 Bridge models read from IFC (left) and the resulting USD scene opened in a USD
 viewer (right).
+
+<p align="center">
+  <a href="doc/ux1.png">
+    <img src="doc/ux1.png" alt="IFC to USD web workspace showing an office building with transparent surfaces and edges, an input file tree, and converted output artifacts" width="100%">
+  </a>
+</p>
+<p align="center"><em>Local web workspace: select IFC files, convert to USD, and inspect the result in 3D with edges and transparency.</em></p>
 
 It does more than convert: it **measures what was preserved and what was lost, and
 writes it to a report**. Coordinate precision, property retention, class coverage

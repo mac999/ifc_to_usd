@@ -3,9 +3,86 @@
 | | |
 |---|---|
 | **Product** | ifc2usd |
-| **Version** | 0.2 (local web workspace specification) |
-| **Date** | 2026-09-20 |
+| **Version** | 0.3 (implementation contract and verified development workflow) |
+| **Date** | 2026-10-02 |
 | **Purpose** | Product requirements at a level of detail that lets a developer start implementing from this document alone |
+
+---
+
+## 0. Start Here: Development Contract
+
+This document applies equally to human developers and coding agents, including
+Codex and Claude Code. It describes an existing implementation, not a greenfield
+scaffold. Read repository instructions and inspect the working tree before editing.
+Preserve unrelated local changes. Do not add AI attribution to commits, PRs or logs;
+commits are authored by the user alone.
+
+Resolve specification conflicts in this order: current owner instructions,
+repository instructions, this revision, then older examples. The owner has selected
+**English-only UI**. Korean UI defaults, language switching and bilingual acceptance
+criteria from the previous revision are superseded. Do not reintroduce them.
+Requirement IDs below are retained for traceability. A requirement is not evidence
+of completion; section 14 identifies what has actually been checked and what remains.
+The specification revision is 0.3; the package version remains 0.2.0 unless a
+separate release change updates both package metadata and `ifc2usd.__version__`.
+
+### 0.1 Environment and first run
+
+Use the existing `venv_lmm` Conda environment on this checkout. Do not create another
+virtual environment or silently switch to system Python or the old `.venv` directory.
+The recorded Windows interpreter is
+`C:\Users\ktw\.conda\envs\venv_lmm\python.exe`; this is machine-specific, not a path to
+hard-code into application code. On other machines select a compatible environment.
+
+Run from the repository root in PowerShell:
+
+```powershell
+conda activate venv_lmm
+python -c "import sys; print(sys.executable)"
+python -m ifc2usd doctor
+# Install only if the environment is missing the editable project or dependencies:
+python -m pip install --no-cache-dir -e ".[web,test]" -c constraints-tested.txt
+python -m ifc2usd web input -o out --no-open-browser
+```
+
+Open the printed URL, normally `http://127.0.0.1:5000`. Keep the server process alive
+while using the workspace. A shell session with a running server is expected.
+Verify `/api/workspace` reports this checkout's `input` and `out` roots before testing.
+If a server is already present, inspect its roots first; do not assume that a working
+URL points to the intended files, and do not terminate an unrelated process.
+If the assistant's embedded browser is unavailable, provide the local URL and use a
+supported desktop browser. Browser availability is not a conversion-engine failure.
+
+| Path | Meaning |
+|---|---|
+| `input/Office_A_20110811.ifc` | Real user-supplied model for integration/visual checks |
+| `out/` | Normal local outputs; ignored by Git |
+| `.test-output/browser-input/` | Synthetic browser fixtures only; never present these as the user's models |
+| `.test-output/` | Disposable investigation/test evidence; preserve unrelated existing files |
+| `data/ifc` | Library configuration default; not the sample directory in this checkout |
+
+Input and output roots must be separate and neither may contain the other. Roots are
+locked at server startup. The v0.3 UI browses within those roots; it does not offer an
+OS-wide folder picker, file uploads or runtime root changes. Disabled root fields are
+intentional and must explain how to restart with another path.
+
+### 0.2 Build and change discipline
+
+- Python CLI and Flask must call the same reader, writer, validation and batch core.
+  Do not implement a separate web conversion path.
+- Edit `frontend/*.ts` and `frontend/workspace.css`, then run `npm run build`.
+  The Flask server serves `ifc2usd/web/static/dist/`; changing TypeScript alone does
+  not update the delivered UI. Do not hand-edit generated JavaScript.
+- Reuse `package-lock.json` with `npm ci` when dependencies are missing. Node is for
+  development, not a runtime requirement for Python users. No CDN dependencies.
+- Restart Python after backend changes and reload the page after asset changes.
+  A server restart invalidates browser sessions/CSRF tokens and in-memory jobs.
+- Changing authored USD semantics requires a conversion-key writer schema/version
+  change; changing preview serialization requires an `ADAPTER_VERSION` change.
+  Otherwise old artifacts may be incorrectly reused despite a code fix.
+- Use a fresh output folder when comparing options. Do not delete or overwrite
+  existing user outputs just to make a test pass. Explain explicit overwrite and
+  the reuse rules in section 7.
 
 ---
 
@@ -47,7 +124,9 @@ coordinate magnitude.
 | 500,000 m | 62.500 mm | 21.749 mm |
 
 Applying a local origin offset **while keeping float64 up to the point the offset
-is subtracted** holds the error at 0.0006 mm regardless of coordinate magnitude.
+is subtracted** produced the small-model measurements above. These are reference
+measurements, not universal guarantees: a model's extent and unshifted elevation
+still determine float32 precision. Every enabled validation measures actual error.
 
 > **Implementation note.** The offset does not undo precision that was already
 > discarded. A single `dtype=np.float32` cast anywhere upstream defeats it, and
@@ -78,13 +157,13 @@ misleading. Reports must carry `source_property_count` and
 | ID | Goal |
 |---|---|
 | G1 | Convert IFC geometry, semantics and identifiers to USD with measurable loss accounting |
-| G2 | Guarantee sub-millimetre precision for projected-CRS input |
+| G2 | Preserve precision with a local origin and measure the actual error; sub-millimetre results depend on model extent and preserved elevations |
 | G3 | Batch-convert every IFC file in a folder |
 | G4 | Emit machine-readable (JSON) and human-readable (Markdown) reports |
 | G5 | Reproducible runs driven by a single `config.json` |
 | G6 | First successful conversion within five minutes of install |
 | G7 | Browse IFC inputs and USD outputs, run conversions and inspect results in a local three-panel web workspace |
-| G8 | Provide a polished, resizable workspace with dark/light themes and Korean/English UI |
+| G8 | Provide a polished, resizable workspace with dark/light themes and English UI |
 
 ### 3.2 Non-Goals (out of scope for v1)
 
@@ -121,6 +200,8 @@ misleading. Reports must carry `source_property_count` and
 | FR-C6 | Record the offset in both USD `customLayerData` and the report |
 | FR-C7 | Read the IFC length unit into USD `metersPerUnit`; default up axis Z |
 | FR-C8 | With `preserve_z: true` (default), leave the vertical offset component at zero so elevations are preserved |
+| FR-C9 | Preserve `IfcSpace`, `IfcOpeningElement` and `IfcOpeningStandardCase` meshes and semantics, but author them with USD `purpose=guide`. These are spatial/void volumes, not opaque building components. Include them in conversion and validation counts. |
+| FR-C10 | A `scene.meters_per_unit` override must rescale authored coordinates from SI metres into that unit, preserving physical size. Changing metadata alone is incorrect. |
 
 ### 5.2 Semantics Mapping (FR-M)
 
@@ -153,7 +234,7 @@ misleading. Reports must carry `source_property_count` and
 | FR-B3 | One file's failure must not stop the run (`on_error: continue \| stop`) |
 | FR-B4 | Process-level parallelism (`workers`, default 4, auto-capped at half the physical cores) |
 | FR-B5 | Emit `summary.json` and `summary.md` when the batch finishes |
-| FR-B6 | Skip a file whose input hash matches the previous run and whose outputs exist (`skip_unchanged`, default true) |
+| FR-B6 | Reuse only when source hash, conversion configuration/version hash and every recorded artifact hash match (`skip_unchanged`, default true); existence alone is insufficient |
 | FR-B7 | Show progress on the console, suppressed by `--quiet` |
 
 ### 5.5 Reporting and Logging (FR-R)
@@ -199,9 +280,11 @@ misleading. Reports must carry `source_property_count` and
 | FR-W7 | Top menu panel exposes run-selected, run-all, cancel, validate-result and regenerate-report commands, plus visible effective conversion options and a collapsible advanced-options area |
 | FR-W8 | Two draggable splitters resize the input tree, canvas and output tree; support keyboard resizing, panel collapse, double-click reset and per-browser persistence |
 | FR-W9 | Provide `dark`, `light` and OS-following `system` themes, with dark as the initial default; update canvas, grids, menus, trees and focus/selection states together |
-| FR-W10 | Switch all UI labels, menus, tooltips, validation messages and status text between Korean (`ko`, default) and English (`en`) without reload; preserve selection, camera, options and active jobs |
+| FR-W10 | All authored UI labels, menus, tooltips, validation messages and statuses are English (`en`). Preserve source names, GUIDs and raw dependency messages verbatim. No language switcher in this version. |
 | FR-W11 | Show queued/running/succeeded/warning/failed/cancelled states, per-file and overall progress, elapsed time, warnings and a collapsible live log; reconnecting must recover the active job snapshot |
 | FR-W12 | Distinguish empty folders, no selection, loading, no renderable geometry, conversion failure, preview failure and unavailable WebGL2; show actionable status and retain artifact/report access |
+| FR-W13 | Folder-name activation expands/collapses; its checkbox selects that folder for recursive conversion. File names and checkboxes toggle selection consistently. Provide input refresh, clear-selection and search across unexpanded subfolders. Select-visible acts only on displayed entries. |
+| FR-W14 | Surface per-file failure reasons automatically, including existing outputs with overwrite disabled. Invalid option text must remain visible and block both run commands until corrected. |
 
 ### 5.8 Web UX and Interaction Contract
 
@@ -209,7 +292,7 @@ misleading. Reports must carry `source_property_count` and
 
 ```text
 +--------------------------------------------------------------------------+
-| Run / Cancel / Validate / Report | Conversion options | Theme | KO / EN   |
+| Run / Cancel / Validate / Report | Conversion options | Theme            |
 +------------------+------------------------------------+------------------+
 | Input IFC tree   |                                    | Output USD tree  |
 | Search / Select |          3D canvas viewer           | Search / Refresh |
@@ -230,14 +313,14 @@ misleading. Reports must carry `source_property_count` and
   bundled Noto Sans KR for Korean/Latin UI and a monospace face for paths/logs;
   keep section headings compact, letter spacing zero and corner radii at 4-8 px.
 - Use Lucide icons with localized accessible names/tooltips for viewer tools;
-  use labeled buttons for execution, segmented controls for language/projection,
+  use labeled buttons for execution, labeled projection controls,
   menus for render modes, toggles for booleans and sliders/numeric inputs for
   opacity and numeric settings. Provide visible keyboard focus, tree navigation,
   accessible splitter values and keyboard equivalents for camera actions.
 - Trees truncate long names with full-path tooltips. Toolbars wrap or overflow
   into menus without covering the canvas or each other. Canvas dimensions follow
   splitter/container changes without resetting the camera or stretching output.
-- Persist theme, locale, panel sizes and last render settings in browser-local
+- Persist theme, panel sizes and last render settings in browser-local
   preferences. First launch uses `web` configuration defaults; explicit web CLI
   presentation flags override saved preferences for that launch. Thereafter UI
   changes take effect immediately and update preferences, not conversion config.
@@ -274,6 +357,10 @@ misleading. Reports must carry `source_property_count` and
 
 **USD preview contract**
 
+- Hide guide volumes by default; expose a `Spaces / openings` toggle without
+  modifying the USD. Restore-all respects this toggle. A successful round-trip
+  check alone does not prove that a building is visually readable: acceptance
+  must include a real IFC containing spaces and openings.
 - Three.js must not be assumed to load arbitrary USD directly. A Flask-side
   preview adapter reads the generated `.usda`/`.usdc` using `usd-core`, evaluates
   the supported mesh hierarchy and transforms, and emits a cached GLB plus an
@@ -311,6 +398,33 @@ misleading. Reports must carry `source_property_count` and
 
 ## 7. Configuration Schema (config.json)
 
+### 7.0 Coordinate and unit contract
+
+Let `u` be output metres-per-unit: the explicit positive unit override, or the IFC
+length-unit scale when null. IfcOpenShell geometry is returned in SI metres.
+
+1. Read tessellated points as float64. If `use_world_coords=false`, apply the
+   product's shape transform once to recover world-space SI coordinates; this
+   flag must not scatter products at the origin or alter the physical model.
+2. Convert to stage units: `p_stage = p_world_metres / u`.
+3. Compute `origin_offset` in stage units. Auto-center uses the complete target
+   bounding box, including guide geometry. Explicit values use the same units.
+   `preserve_z=true` forces offset Z to zero even in explicit mode.
+4. Subtract offset in float64. For Z-up keep `(x,y,z)`; for Y-up write `(x,z,-y)`.
+   Only then cast authored mesh points to float32.
+5. Author `metersPerUnit=u`, the stage up axis and the original pre-axis-rotation
+   offset in layer custom data. Do not add the offset again as a scene transform.
+6. Validation reverses the axis rotation, adds the offset, and compares in
+   millimetres. Preview converts local stage points to metres and to glTF Y-up
+   once; it does not restore the large georeferenced offset into the camera scene.
+
+Example: one metre is 1 stage unit at `u=1`, and 1,000 stage units at `u=0.001`.
+Both must look the same physical size. A metadata-only unit change fails FR-C10
+even if a self-consistent round-trip test passes. Test against independently
+measured source coordinates in metres, not just the converted in-memory model.
+
+### 7.1 Defaults
+
 ```json
 {
   "input":  { "path": "data/ifc", "recursive": true, "pattern": "*.ifc" },
@@ -340,7 +454,7 @@ misleading. Reports must carry `source_property_count` and
     "port": 5000,
     "open_browser": true,
     "theme": "dark",
-    "locale": "ko",
+    "locale": "en",
     "viewer": { "render_mode": "shaded", "transparent": false, "opacity": 0.35 }
   }
 }
@@ -351,13 +465,55 @@ On a schema violation, exit with code 3 and name the offending key.
 
 `web` is optional and ignored by headless conversion commands. Its host is
 loopback-only in v1; port must be 1-65535, theme `dark|light|system`, locale
-`ko|en`, render mode `shaded|edges|wireframe|normals`, and opacity 0.05-1.00.
+`en` only, render mode `shaded|edges|wireframe|normals`, and opacity 0.05-1.00.
 Input/output roots come from `input.path` and `output.dir`; web launch requires
 an input directory. Web form edits override the resolved conversion settings
 only for the next job, using the same schema validation. Exclude `web` and all
 browser preferences from conversion cache keys and artifact determinism checks.
 Changing conversion options must invalidate skip-unchanged reuse even when the
 input hash is unchanged.
+
+### 7.2 Reuse and output publication
+
+- `convert model.ifc -o out` writes `out/model/scene.usda`, not `out/scene.usda`.
+  Batch mirrors relative folders and removes the `.ifc` suffix for each output
+  directory. Explicit input paths are recorded in the configuration snapshot.
+- Relative paths in `config.json` resolve against the configuration file's
+  directory; explicit CLI paths resolve against the current working directory.
+- Each completed directory contains `.ifc2usd.json` with source/configuration
+  hashes, artifact hashes, result code and report. It is required for reuse,
+  report regeneration and the source link used by web validation. It is not a
+  user-facing tree entry. Do not delete it independently of its result.
+- Reuse is checked before overwrite. Unchanged matching results may be reused
+  when overwrite is false. A changed format, configuration, writer schema or
+  artifact hash requires a new output directory or explicit overwrite.
+- If reuse fails and a destination contains files, overwrite=false returns a
+  clear error. It must not appear to the user as an unresponsive Run button.
+- Build into a sibling staging directory, validate and close logs before
+  publication. Retain the old result until the replacement is complete. Do not
+  display staging directories as completed outputs.
+- `validation.enabled=false` means `passed=null`, never a validation pass.
+  Zero source properties means retention=null, not 0% or a fabricated 100%.
+
+### 7.3 Option behavior
+
+Run-selected expands folder selections using recursion/pattern and deduplicates
+overlapping selections. An individually selected IFC is an explicit target;
+filename patterns govern folder discovery. Search only changes the displayed
+tree, not the discovery configuration or Run-all scope. Selection count counts
+selected entries, while job total counts resolved unique files.
+
+Basic and advanced options must stay synchronized. Invalid numeric/array text
+must not be silently replaced with the last valid value on opening the dialog.
+Disable both Run-selected and Run-all until corrected. In-flight jobs use frozen
+configuration. Validate/Report act on the selected completed USD and its recorded
+source/configuration, not on edited options for the next conversion. Merely
+opening a report does not select a different USD for these actions.
+
+The generated per-file CLI commands are convenience examples: independently
+running `convert` for a nested file does not recreate the web root's entire
+relative output hierarchy. For an exact multi-file/nested replay use `batch`
+with the same root and exported configuration, and document the target set.
 
 ---
 
@@ -382,7 +538,7 @@ Common options: `--config` (default `config.json`), `--json`, `--verbose`,
 Install the optional stack with `pip install "ifc2usd[web]"`. Example:
 
 ```bash
-ifc2usd web data/ifc -o out --host 127.0.0.1 --port 5000 --theme dark --locale ko
+ifc2usd web input -o out --host 127.0.0.1 --port 5000 --theme dark --locale en
 ifc2usd web --config config.json --no-open-browser --render-mode edges --transparent --opacity 0.25
 ```
 
@@ -394,7 +550,7 @@ ifc2usd web --config config.json --no-open-browser --render-mode edges --transpa
 | `--port PORT` | `web.port` / `5000` | Fail clearly on conflicts; do not silently choose another port |
 | `--open-browser / --no-open-browser` | `web.open_browser` / `true` | Open the local URL after readiness; browser-open failure leaves the server running and prints the URL |
 | `--theme dark\|light\|system` | `web.theme` / `dark` | Initial launch theme |
-| `--locale ko\|en` | `web.locale` / `ko` | Initial UI language |
+| `--locale en` | `web.locale` / `en` | English only; reject other values |
 | `--render-mode shaded\|edges\|wireframe\|normals` | `web.viewer.render_mode` / `shaded` | Initial render mode |
 | `--transparent / --no-transparent` | `web.viewer.transparent` / `false` | Initial transparency state |
 | `--opacity FLOAT` | `web.viewer.opacity` / `0.35` | Transparent-mode opacity, 0.05-1.00 |
@@ -412,8 +568,8 @@ Conversion exit codes are recorded per job and do not terminate the web server.
 | Code | Meaning |
 |---|---|
 | 0 | Success |
-| 1 | Conversion failure (for batch, when every file failed) |
-| 2 | Validation threshold exceeded |
+| 1 | Any conversion failure or cancellation; partial batch failure is non-zero |
+| 2 | Quality warning: skipped geometry, failed validation or property retention below threshold |
 | 3 | Configuration error |
 
 ---
@@ -426,13 +582,15 @@ ifc2usd/
   config.py          default merge, schema validation, path resolution
   reader/
     ifc_reader.py    ifcopenshell parsing: units, spatial structure, properties
-    geometry.py      tessellation, float64 handling, offset computation
+    geometry.py      float64 local-origin offset computation
   writer/
     usd_writer.py    stage creation, hierarchy, customData
   validate.py        USD re-read and round-trip error
   report.py          JSON/Markdown reports and aggregation
   batch.py           folder discovery, parallel execution, summary
   logging_setup.py   file and console loggers
+  core.py            single-file pipeline, cache checks, staging and publication
+  cancellation.py    cooperative cancellation signal
   web/
     app.py          Flask app factory, local API, session and root restrictions
     jobs.py         background process jobs, cancellation, progress snapshots
@@ -441,13 +599,15 @@ ifc2usd/
     static/         bundled CSS, JavaScript, fonts, icons, locales and Three.js
 tests/
 docs/
+frontend/            main.ts UI, viewer.ts rendering, locales.ts English labels
+scripts/             synthetic fixtures and real-office web checks
 ```
 
 ### 9.1 Module Interfaces
 
 ```python
 # reader/ifc_reader.py
-def read_ifc(path: Path, cfg: dict) -> IfcModel: ...
+def read_ifc(path: Path, cfg: dict, cancel=None) -> IfcModel: ...
 
 @dataclass
 class IfcModel:
@@ -455,7 +615,7 @@ class IfcModel:
     meters_per_unit: float
     elements: list[Element]           # conversion targets
     skipped: list[SkipRecord]         # guid, class, reason
-    spatial: dict[str, SpatialNode]   # guid -> parent chain
+    spatial: dict[str, list]          # guid -> ordered (guid, name) parent chain
     stats: dict                       # source property totals, etc.
 
 @dataclass
@@ -466,38 +626,43 @@ class Element:
     verts: np.ndarray                 # (N, 3) float64  <- never float32
     faces: np.ndarray                 # (M, 3) int32
     props: dict[str, str | int | float | bool]
+    description: str
+    spatial: list                    # ordered (guid, name) parent chain
 
 # writer/usd_writer.py
-def write_usd(model: IfcModel, out: Path, cfg: dict) -> WriteResult: ...
-# WriteResult: scene_path, origin_offset, n_prims, prop_written, prop_dropped
+def write_usd(model: IfcModel, out: Path, cfg: dict, cancel=None) -> WriteResult: ...
+# WriteResult: scene_path, origin_offset, n_prims, prop_written, prop_dropped, collisions
 
 # validate.py
-def validate(scene: Path, model: IfcModel) -> ValidationResult: ...
-# ValidationResult: max_error_mm, rms_error_mm, property_retention, passed
+def validate(scene: Path, model: IfcModel, cfg=None) -> dict: ...
+# Includes max_error_mm, rms_error_mm, property_retention, passed,
+# preserved_property_count, missing_guids, mismatched_guids and enabled.
 ```
 
 ### 9.2 Dependencies
 
-`ifcopenshell`, `usd-core`, `numpy` (Python 3.10 or later)
+`ifcopenshell`, `usd-core`, `numpy`, `psutil` (Python 3.10 or later).
+Supported version ranges are in `pyproject.toml`; the recorded tested Python 3.12
+environment is in `constraints-tested.txt`, not a guarantee for every version.
 
 Optional `web` extra: `Flask`, `waitress` (cross-platform local WSGI server),
 `pygltflib`. Frontend: Jinja2 shell, TypeScript modules, CSS design tokens,
-Three.js with `OrbitControls`/`GLTFLoader`, Lucide icons and `ko`/`en` dictionaries.
+Three.js with `OrbitControls`/`GLTFLoader`, Lucide icons and English labels.
 Use Vite for development/build only; ship built assets in the Python wheel so
 end users need neither Node.js nor CDN access. Pin compatible dependency versions.
 Run conversion/preview work outside request threads in bounded process workers;
 Flask debug mode and its development server are not the distributed runtime.
 
-> `usd-core` publishes no aarch64 wheel on PyPI. On ARM, a distribution that
-> bundles pxr (such as Isaac Sim) must be installed first; `ifc2usd doctor`
-> checks for this.
+> Verify wheel availability for the target architecture before installation.
+> If unavailable, use an environment that supplies `pxr` and document its provenance;
+> `ifc2usd doctor` checks imports. Do not assume x86-64 results establish ARM support.
 
 ### 9.3 Local Web API and Safety
 
 | Endpoint | Responsibility |
 |---|---|
 | `GET /api/workspace` | Roots, validated configuration, schema/defaults and active job snapshot |
-| `GET /api/tree?root=input\|output&path=...` | Lazy directory listing with server-issued entry IDs and statuses |
+| `GET /api/tree?root=input\|output&path=...&query=...` | Lazy listing; a nonempty query searches descendants. Returns server-issued IDs, relative paths and statuses. |
 | `POST /api/jobs` | Validate action (`convert`, `validate`, `report`), entry IDs and configuration overrides; return job ID with HTTP 202 |
 | `GET /api/jobs/<id>` | Poll status, monotonic progress, per-file results and log entries since a cursor; poll about once per second while active |
 | `POST /api/jobs/<id>/cancel` | Request idempotent cancellation |
@@ -518,21 +683,50 @@ Serve only registered artifacts/previews, escape filenames/properties/logs, and
 never build shell commands from UI input. Root changes require a server restart;
 v1 offers no arbitrary filesystem picker, uploads or remote access.
 
+### 9.4 Concrete API sequence
+
+Use a single same-origin session for the following calls. `GET /api/workspace`
+returns `csrf`; send it as `X-CSRF-Token` on every POST. Obtain entry IDs from the
+tree API, never construct them from paths in frontend code.
+
+```json
+{
+  "action": "convert",
+  "all": false,
+  "entries": ["server-issued-input-entry-id"],
+  "configuration": {"output": {"format": "usda"}},
+  "confirm_overwrite": false
+}
+```
+
+Submit to `POST /api/jobs`. HTTP 202 returns `{"id":"job-id"}`. Poll
+`GET /api/jobs/job-id` until status leaves `queued|running`; display individual
+`files`/`result.results` errors and warnings even if the job has no top-level error.
+`all=true` converts the root. Validate/Report use output scene IDs instead of input
+IDs. HTTP 409 `confirm_overwrite` requires a user decision, then a retry with
+`confirm_overwrite=true`; an `active_job` conflict is a different 409 case.
+
+For preview, submit `{"entry":"output-scene-id"}` to `POST /api/previews`, poll
+its returned ID, then load the ready `glb` and `metadata` URLs. The metadata index
+maps prim paths to IFC identity/properties and the `guide` flag. Ignore an obsolete
+preview response if the user has selected another scene in the meantime.
+All errors must remain actionable without disabling artifact download.
+
 ---
 
 ## 10. Non-Functional Requirements
 
 | ID | Requirement |
 |---|---|
-| NFR-1 | Round-trip vertex error at or below 0.01 mm for coordinates up to 500 km |
-| NFR-2 | Convert 10,000 elements within five minutes on a single core |
-| NFR-3 | Handle a 100,000-element model within 8 GB via per-element streaming writes |
+| NFR-1 | Reference small-model tests at 500 km have round-trip error at or below 0.01 mm; report actual error for arbitrary models rather than promise a universal bound |
+| NFR-2 | Benchmark target, not yet established: 10,000 elements within five minutes on a single core |
+| NFR-3 | Future benchmark/design target: 100,000 elements within 8 GB. Current reader and USD stage retain the model in memory; streaming is not implemented. |
 | NFR-4 | Byte-identical USD output for identical input and configuration |
 | NFR-5 | Linux and Windows, Python 3.10 or later |
 | NFR-6 | `ifc2usd convert model.ifc` works in one line after `pip install` |
 | NFR-7 | Web workspace supports current stable Chrome/Edge/Firefox on desktop Windows/Linux with WebGL2; narrow layouts retain conversion/report access and unsupported rendering shows a fallback |
 | NFR-8 | On a documented reference desktop and 100,000-triangle preview fixture, target at least 30 FPS during orbit at 1920x1080; job status updates within 2 s and cached tree/menu actions within 200 ms; record hardware/browser and cold-preview timing separately |
-| NFR-9 | UI meets WCAG 2.2 AA contrast and keyboard requirements, respects reduced motion, and supports 200% zoom in both languages/themes without overlapping controls |
+| NFR-9 | Target WCAG 2.2 AA contrast/keyboard requirements, reduced motion and 200% zoom in English with both themes; full conformance requires an audit |
 | NFR-10 | Installed web UI works offline with bundled assets; optional web dependencies do not affect headless installation or conversion results |
 
 ---
@@ -552,12 +746,14 @@ v1 offers no arbitrary filesystem picker, uploads or remote access.
 | AC-9 | `ifc2usd web` serves the workspace; root, port, theme, locale and viewer flags follow documented precedence; invalid flags/ports fail clearly | CLI integration tests including occupied port and missing web extra |
 | AC-10 | Selecting IFC files/folders on the left runs the expected deduplicated targets; completed outputs appear on the right and open in the central canvas | Playwright end-to-end test with nested IFC fixtures and both USD formats |
 | AC-11 | Every render mode and transparency toggle/slider works; picking resolves GUID/prim metadata; fit, isolate, hide and restore work without changing artifact hashes | Browser interaction, canvas-pixel and metadata checks |
-| AC-12 | Theme and Korean/English changes cover labels/errors and preserve active jobs, selections and camera; preferences persist with explicit CLI overrides taking priority | Playwright reload and launch-precedence tests |
-| AC-13 | Mouse/keyboard splitters respect limits and persist; no overlap at 1920x1080, 1280x720 and 390x844, or at 200% zoom | Playwright screenshots and accessibility checks in both languages/themes |
+| AC-12 | Theme changes preserve active jobs, selections and camera; preferences persist with explicit CLI overrides taking priority; all authored labels/errors are English | Playwright reload and launch-precedence tests |
+| AC-13 | Mouse/keyboard splitters respect limits and persist; no overlap at 1920x1080, 1280x720 and 390x844, or at 200% zoom | Playwright screenshots and accessibility checks in both themes |
 | AC-14 | Web and CLI jobs with equivalent resolved settings produce identical USD and equivalent conversion metrics; UI-only changes do not invalidate conversion reuse, conversion-option changes do | Cross-entry-point integration and cache regression tests |
 | AC-15 | UI stays responsive during conversion; cancel/reconnect/partial failure preserve completed outputs; preview failure leaves successful conversion intact | Background-job lifecycle and failure-injection tests |
 | AC-16 | Traversal, junction/symlink escapes, external USD references and cross-origin mutation are rejected; missing WebGL2 and empty scenes show correct fallback states | Security integration and browser fallback tests |
 | AC-17 | Bundled web assets work offline, headless install remains usable without the extra, and reference-scene responsiveness meets NFR-8 | Packaging smoke tests and recorded browser performance run |
+| AC-18 | `input/Office_A_20110811.ifc` converts all 1,083 represented products and 50,782 properties; its 99 spaces and 181 openings remain inspectable guides while the physical building is visible by default | Real-file web conversion, USD re-read, preview and report checks |
+| AC-19 | An output-unit override preserves world coordinates in metres; malformed options block execution; folder/file overlap creates one target per source and existing-output failures show their reason | Unit and browser regression tests |
 
 ---
 
@@ -569,7 +765,7 @@ v1 offers no arbitrary filesystem picker, uploads or remote access.
 | M2 | Full semantics preservation, spatial hierarchy, validation | `validate`, retention metrics |
 | M3 | Batch conversion, parallelism, aggregate report | `batch`, `summary.md` |
 | M4 | Flask workspace, shared configuration, trees, job API and CLI launch options | `ifc2usd web`, optional web extra, conversion workflow tests |
-| M5 | USD preview, render modes/transparency, splitters, themes and Korean/English UI | Three-panel viewer, accessibility and browser acceptance tests |
+| M5 | USD preview, guide-volume visibility, render modes/transparency, splitters, themes and English UI | Three-panel viewer, accessibility and browser acceptance tests |
 | M6 | Conversion/viewer performance tuning, local security, offline packaging, documentation, release | PyPI package, CLI/web user guide, acceptance evidence |
 
 ---
@@ -579,7 +775,7 @@ v1 offers no arbitrary filesystem picker, uploads or remote access.
 | Risk | Impact | Mitigation |
 |---|---|---|
 | No `usd-core` wheel on aarch64 | Install fails | `doctor` pre-check, document alternative distributions |
-| Large models exceed memory | Conversion aborts | Per-element streaming writes, chunked processing |
+| Large models exceed memory | Conversion aborts | Measure current memory limits; streaming/chunking is future work, not an existing guarantee |
 | Geometry varies with tessellation parameters | Reproducibility suffers | Include the configuration snapshot in the report |
 | Diverse property value types | Serialisation failures | Serialise non-scalars to strings, count failures |
 | Prim path collisions | Elements lost | Suffix disambiguation and collision count (FR-S5) |
@@ -588,3 +784,130 @@ v1 offers no arbitrary filesystem picker, uploads or remote access.
 | Large previews or overlapping transparent surfaces | GPU exhaustion, low FPS or sorting artifacts | Lazy previews, GPU resource disposal, measured scene limits and explicit fidelity warnings |
 | Local filesystem/API exposed through the browser | Unauthorized reads or conversions | Loopback binding, Host/Origin checks, CSRF, root confinement and registered artifacts only |
 | Web and CLI settings diverge | Irreproducible conversions | Shared schema/core, immutable job snapshots and cross-entry-point tests |
+
+---
+
+## 14. Verification Evidence and Remaining Work
+
+### 14.1 Recorded baseline (2026-10-02)
+
+The real-model baseline applies to the exact file SHA-256
+`3ccc7df480d7ae9d1af148d13634fe1af8f1a75949fdf3cb1f87c60464df4700`.
+Do not enforce these counts on another model or a modified copy.
+
+| Measurement | Recorded result |
+|---|---|
+| Source | IFC2X3, Autodesk Revit Architecture 2011, 4,099,307 bytes |
+| Target / converted / skipped products | 1,083 / 1,083 / 0 |
+| Preserved source properties | 50,782 / 50,782 |
+| Vertices / triangular faces | 109,599 / 57,755 |
+| Guides retained | 99 `IfcSpace` + 181 `IfcOpeningElement` |
+| Maximum / RMS round-trip error | approximately 0.001289 / 0.000452 mm |
+| Default output | Z-up, 1 metre per unit, auto-center with Z preserved |
+| Real web workflow | conversion, preview, guide toggle, validation and report viewing exercised in Edge; no page errors |
+| Python tests | 28 passing, including output-unit and guide-volume regressions |
+| Browser regressions | 4 passing: conversion/viewer/preferences, mobile layout, selection/search/invalid options, and folder deduplication/format/failure details |
+
+Evidence: generated `out/Office_A_20110811/report.json`,
+`.test-output/office-web-check.json`, `.test-output/office-web.png` and
+`.test-output/office-web-guides.png`. These are local ignored artifacts, not
+checked-in acceptance certificates. Recreate them with the workflow below.
+The roughly 13-15 second observed conversion time is a local observation, not a
+performance guarantee. Software versions are recorded in the report.
+
+### 14.2 Claims that are not established by this baseline
+
+- Current validation checks coordinates and property values for source GUIDs.
+  It does not independently certify topology, normals, all IFC placements,
+  material fidelity or visual similarity. It also does not exhaustively detect
+  every extra/duplicate output mesh. Add targeted tests before making those claims.
+- Guide purpose prevents void/space solids from appearing as opaque building
+  components in ordinary rendering. External viewers may deliberately enable
+  guides. Verify their purpose settings before calling this lost geometry.
+- Original IFC materials/textures, transparency and appearance are out of scope.
+  The preview uses generated class colors. Missing original colors do not imply
+  a geometry conversion failure.
+- The reader retains all element geometry and the USD stage in memory. NFR-2,
+  NFR-3 and NFR-8 need measured large-file/scene benchmarks and possibly redesign.
+- Edge automation plus synthetic fixtures does not establish Firefox/Linux,
+  `usdview`, all IFC schemas or a full WCAG audit. AC-7 and broader compatibility
+  work remain acceptance tasks, not assumed passes.
+- The partial-failure test currently covers 20 valid synthetic files plus one
+  corrupt file. AC-4's 29+1 example still needs a dedicated run if that exact
+  release criterion is claimed. Repeated copies are not diverse real BIM models.
+- Cancellation is cooperative between elements. It cannot interrupt a blocked
+  native tessellation call immediately. Validate/Report cancellation is not a
+  guarantee of immediate interruption either. Jobs survive browser reconnection,
+  not server restart.
+- Only the snapshot at job start is frozen; browser conversion options and
+  selections are not promised to survive reload. Theme/panels/render preferences
+  have separate browser-local persistence.
+
+### 14.3 Required verification workflow
+
+Use the selected Python environment throughout:
+
+```powershell
+python -m pytest -q
+# Only when frontend dependencies are not already installed:
+npm ci
+npm run build
+python scripts/browser_fixture.py
+npm run test:e2e
+```
+
+Playwright starts its own server on port 5094 by default, uses installed Microsoft
+Edge and gives each run a new synthetic output folder. Override
+`IFC2USD_PYTHON`, `IFC2USD_BROWSER` or `IFC2USD_TEST_PORT` for another environment.
+Do not silently reuse a server on that port: it may run stale assets or different
+roots. If a test leaves a process behind, identify the exact test-owned process
+before stopping it. A port conflict is not a product regression.
+
+Permission errors on an existing test cache, manifest or OS temporary directory
+are environment failures. Record the exact error and use the approved permission
+flow or a documented fresh test directory; do not disable path confinement or
+delete unrelated outputs. Do not claim test success just because the UI loaded.
+
+For the real model, run the normal server from section 0 in a separate terminal,
+then execute:
+
+```powershell
+node scripts/check_office_web.mjs
+python -m ifc2usd validate out/Office_A_20110811/scene.usda --source input/Office_A_20110811.ifc --json
+```
+
+The real-file script expects the standard `input -> out` workspace at port 5000
+and creates/reuses the office result. If those outputs already exist with different
+settings or a prior writer schema, first preserve them and select a fresh output
+root, adapting the script, or explicitly authorize overwrite. The script must not
+silently delete existing outputs. Inspect both captured screenshots: an empty
+canvas or visible space/void blocks is not a satisfactory preview test.
+
+### 14.4 Completion checklist for any subsequent change
+
+1. Record the reproduced trigger, expected behavior and affected requirement IDs.
+2. Fix the shared implementation and add a focused regression at the level where
+   the defect occurred. Do not replace real-file verification with synthetic tests.
+3. Rebuild frontend artifacts when relevant; restart the backend and verify roots.
+4. Run the relevant tests, then the real-file flow when conversion/preview changes.
+   Inspect output metrics and a rendered image, not merely process exit status.
+5. Report test commands/results and remaining limitations. Keep verified facts,
+   product requirements and future targets distinct when updating this document.
+6. Do not commit or publish unless requested; do not add agent attribution.
+
+## 15. Troubleshooting Without Guesswork
+
+| Symptom | First check | Correct response |
+|---|---|---|
+| Expected IFC absent | `/api/workspace` roots | Launch `web input -o out`; do not use synthetic fixture roots |
+| Folder name does not select contents | Folder name vs checkbox | Name expands; checkbox selects; Run resolves/deduplicates files |
+| New file absent | Input refresh and active search | Refresh, clear filter if needed; remain within configured root |
+| Run seems ineffective | Job result and visible error/log | Existing output may block overwrite; fix options or choose fresh destination |
+| Options change physical scale | Unit conversion formula | Convert SI points to stage units, not metadata alone |
+| Building looks like solid blocks | Space/opening volumes | Preserve as guides; hide by default; verify toggle and USD purpose |
+| Correct report but blank canvas | Preview job result and WebGL2 | Check USD-to-GLB and browser errors separately from conversion |
+| TS edit has no visible effect | Built asset timestamp and server | Run build, reload; restart for backend changes |
+| Old result survives a writer change | Conversion key/schema and manifest | Invalidate writer schema; preserve old output and reconvert deliberately |
+| Old preview survives an adapter change | Adapter cache version | Bump adapter version and regenerate preview |
+| CSRF/session error after restart | Browser session | Reload; do not remove CSRF protection |
+| Tests pass but real building looks wrong | Real-file screenshot and independent units | Investigate visual/semantic omissions beyond current round-trip checks |
