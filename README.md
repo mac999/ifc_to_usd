@@ -30,6 +30,13 @@ viewer (right).
 </p>
 <p align="center"><em>Local web workspace: select IFC files, convert to USD, and inspect the result in 3D with edges and transparency.</em></p>
 
+<p align="center">
+  <a href="doc/ux2.png">
+    <img src="doc/ux2.png" alt="Orthographic view of the office model with a selected ceiling element and its IFC GUID, class, USD prim path, and property sets displayed in the inspector" width="100%">
+  </a>
+</p>
+<p align="center"><em>Element inspection: select a component to explore its IFC properties and USD prim path, with isolate, hide, and fit-selection controls.</em></p>
+
 It does more than convert: it **measures what was preserved and what was lost, and
 writes it to a report**. Coordinate precision, property retention, class coverage
 and round-trip validation error are recorded on every run.
